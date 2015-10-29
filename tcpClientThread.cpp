@@ -110,5 +110,6 @@ void* TcpClientThread::run(void *arg){
 
 			}
 		}
-	}		
+	}	
+	return NULL;	
 }

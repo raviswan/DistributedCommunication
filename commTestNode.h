@@ -30,7 +30,7 @@ using namespace std;
 #define TCP_LISTEN_LIMIT 5
 #define NUM_THREADS 4
 #define RTT_COUNT 50
-#define SOCKET_TIMEOUT 2
+#define SOCKET_TIMEOUT 3
 
 int getIPAddress(struct sockaddr *sa, char *ipAddr);
 typedef struct{

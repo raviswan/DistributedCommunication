@@ -12,7 +12,7 @@ public:
     virtual ~Thread() { }
     const pthread_t& getThreadID() const;
     bool join();
-    void* run(void* arg);
+    virtual void* run(void* arg) = 0;
     static void* threadProc(void* arg);
 
 private:

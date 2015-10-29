@@ -1,4 +1,5 @@
 #include "tcpServerThread.h"
+#include "tcpConnServerThread.h"
 
 TcpServerThread::TcpServerThread():Thread(){
 };
@@ -36,10 +37,19 @@ void* TcpServerThread::run(void *arg){
 			perror("error on accept()");
         else{
         	::getIPAddress((struct sockaddr*)&tcpCliAddr,ipAddr);
-			//commTestNode->addNeighbor(ipAddr,connSock,true);
+        	/*Spawn new thread for every accepted connection*/
+			TcpConnServerThreadArg* tcpConnArg = new TcpConnServerThreadArg;
+			if(!tcpConnArg){
+				printf("ERROR: Could not instantiate TcpServerThreadArg object");
+				exit(1);
+			}
+			tcpConnArg->connectedSocket = connSock;
+			tcpConnArg->ipAddress = ipAddr;
+			Thread* tcpConnServerThread = new TcpConnServerThread();
+			tcpConnServerThread->run(tcpConnArg);
          }
-         sleep(1);  
 	    
 	}
+	return NULL;
 
 }

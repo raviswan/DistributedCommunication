@@ -32,7 +32,6 @@ void* Thread::threadProc(void* arg)
 
 void* Thread::run(void *arg)
 {
-    std::cout << "Hello from Thread" << std::endl;
     return 0;
 }
 
