@@ -37,7 +37,6 @@ int generateRandomNameAndIP(const char* prefix, const char* netmask,
 	unsigned int maxHostSupported,host;
 	in_addr address;
 	in_addr_t netmaskBinary, prefixBinary;
-	sockaddr_in sa;
 	char ip[INET_ADDRSTRLEN];
 	char name[NODENAME_LIMIT], temp[NODENAME_LIMIT];
 	memset(name,0,NODENAME_LIMIT);
@@ -72,13 +71,12 @@ int generateRandomNameAndIP(const char* prefix, const char* netmask,
 }
 
 CommTestNode::CommTestNode(){
-	Init();
 }
 
 CommTestNode::~CommTestNode(){
 }
 
-void CommTestNode::Init(){
+void CommTestNode::StartThreads(){
 	//TcpServerThreadArg* threadArg = (TcpServerThreadArg*) Malloc(sizeof(TcpServerThreadArg));
 	TcpServerThreadArg* threadArg = new TcpServerThreadArg;
 	if(!threadArg){
@@ -87,8 +85,10 @@ void CommTestNode::Init(){
 	}
 	threadArg->ctNode = this;
 	Thread* tcpSrvThread = new TcpServerThread();
+	pthread_mutex_lock( &mThreadsMutex );
 	mThreads.push_back(tcpSrvThread);
-	tcpSrvThread->run(threadArg);
+	pthread_mutex_unlock( &mThreadsMutex );
+	tcpSrvThread->start(threadArg);
 
 	//McastUdpServerThreadArg* msArg = (McastUdpServerThreadArg*) Malloc(sizeof(McastUdpServerThreadArg));
 	McastUdpServerThreadArg* msArg =  new McastUdpServerThreadArg;
@@ -98,8 +98,10 @@ void CommTestNode::Init(){
 	}
 	msArg->ctNode = this;
 	Thread* mcastUdpSrvThread = new McastUdpServerThread();
+	pthread_mutex_lock( &mThreadsMutex );
 	mThreads.push_back(mcastUdpSrvThread);
-	mcastUdpSrvThread->run(msArg);
+	pthread_mutex_unlock( &mThreadsMutex );
+	mcastUdpSrvThread->start(msArg);
 
 	//McastUdpClientThreadArg* mcArg = (McastUdpClientThreadArg*) Malloc(sizeof(McastUdpClientThreadArg));
 	McastUdpClientThreadArg* mcArg = new McastUdpClientThreadArg;
@@ -109,10 +111,24 @@ void CommTestNode::Init(){
 	}
 	mcArg->ctNode = this;
 	Thread* mcastUdpCliThread = new McastUdpClientThread();
+	pthread_mutex_lock( &mThreadsMutex );
 	mThreads.push_back(mcastUdpCliThread);
-	mcastUdpCliThread->run(mcArg);
+	pthread_mutex_unlock( &mThreadsMutex );
+	mcastUdpCliThread->start(mcArg);
 
 
+}
+
+void CommTestNode::StopThreads(){
+	Thread* thread;
+	pthread_mutex_lock( &mThreadsMutex );
+	while(!mThreads.empty()){
+		thread = mThreads.back();
+		mThreads.pop_back();
+		delete thread;
+	}
+	pthread_mutex_unlock( &mThreadsMutex );
+	
 }
 void CommTestNode::setNameAndIPAddress(){
 	char ipStr[INET_ADDRSTRLEN];
@@ -133,11 +149,19 @@ void CommTestNode::addNeighbor(const char* ipStr, int sock,
 	bool connFlag){
 	string ipAddr(ipStr);
 	NodeInfo node;
-	if(mNeighbors.find(ipAddr) == mNeighbors.end()){
+	pthread_mutex_lock( &mNeighborsMutex );
+	std::map<string,NodeInfo>::iterator it = mNeighbors.find(ipAddr);
+	if(it!=mNeighbors.end()){
+		/*neighbor already added. release mutex and exit the function*/
+		pthread_mutex_unlock( &mNeighborsMutex );
+	}
+	else{
+		/*new neighbor, so add to neighbors map and start a tcp connection*/
 		node.tcpConnSocket = sock;
 		node.tcpConnFlag = connFlag;
 		printf("adding %s to neighbor map\n",ipStr);
 		mNeighbors.insert ( std::pair<string,NodeInfo>(ipAddr,node));
+		pthread_mutex_unlock( &mNeighborsMutex );
 		/*Initiate tcp connection to server for this newly added neighbor*/
 		connectToTCPServer(ipAddr);
 	}
@@ -146,24 +170,26 @@ void CommTestNode::addNeighbor(const char* ipStr, int sock,
 
 void CommTestNode::updateNeighbor(string ipStr, int sock, bool connFlag){
 	/*Mutex*/
+	pthread_mutex_lock( &mNeighborsMutex );
 	mNeighbors[ipStr].tcpConnSocket = sock;
 	mNeighbors[ipStr].tcpConnFlag = connFlag;
+	pthread_mutex_unlock( &mNeighborsMutex );
 }
 
 void CommTestNode::removeNeighbor(const char* ipStr){
 	std::map<string,NodeInfo>::iterator it;
 	string ipAddr(ipStr);
+	pthread_mutex_lock( &mNeighborsMutex );
 	it =  mNeighbors.find(ipAddr);
 	if (it != mNeighbors.end()){
-		cout<<"erasing mNeighbors"<<it->first<<endl;
+		printf("erasing neighbor with IP: %s\n",it->first.c_str());
 		mNeighbors.erase(it);
 	}
+	pthread_mutex_unlock( &mNeighborsMutex );
 		
 }
 
-void CommTestNode::setNeighborRTT(int long val){
 
-}
 bool CommTestNode::connectToTCPServer(string ipAddr){
 	int cliSock;
 	int retVal;
@@ -194,8 +220,10 @@ void CommTestNode::startTcpClientForNeighbor(string ipAddr){
 	threadArg->ctNode = this;
 	threadArg->ipStr =  ipAddr;
 	Thread* tcpSrvThread = new TcpClientThread();
+	pthread_mutex_lock( &mThreadsMutex );
 	mThreads.push_back(tcpSrvThread);
-	tcpSrvThread->run(threadArg);
+	pthread_mutex_unlock( &mThreadsMutex );
+	tcpSrvThread->start(threadArg);
 
 }
 
@@ -346,6 +374,9 @@ void CommTestNode::recvMcastPingOverUDP(){
 int main(){
 	/*initialize random generator seed*/
 	srand(time(NULL));
+	CommTestNode *cn = new CommTestNode();
+	cn->StartThreads();
+	cn->StopThreads();
 	//setenv("myIP",(const char*) MY_IP_ADDR,1);
 	//system("echo \"ping $myIP\"");
 	//system("ping $myIP");

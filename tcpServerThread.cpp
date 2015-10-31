@@ -2,20 +2,18 @@
 #include "tcpConnServerThread.h"
 
 TcpServerThread::TcpServerThread():Thread(){
-};
+}
 
 TcpServerThread::~TcpServerThread(){
-}; 
+}
 
 void* TcpServerThread::run(void *arg){
 	TcpServerThreadArg* threadArg = (TcpServerThreadArg*) arg;
 	CommTestNode *commTestNode = threadArg->ctNode;
 	int tSock,connSock;
 	socklen_t tcpCliSize;
-	char connBuf[RECV_BUF_LEN];
 	char ipAddr[INET_ADDRSTRLEN];
 	int retVal;
-	int portNum;
 	sockaddr_in tcpSrvAddr,tcpCliAddr;
 
 	if((tSock = socket(AF_INET,SOCK_STREAM,0))==-1){
@@ -46,10 +44,12 @@ void* TcpServerThread::run(void *arg){
 			tcpConnArg->connectedSocket = connSock;
 			tcpConnArg->ipAddress = ipAddr;
 			Thread* tcpConnServerThread = new TcpConnServerThread();
-			tcpConnServerThread->run(tcpConnArg);
+			pthread_mutex_lock( &commTestNode->mThreadsMutex );
+			commTestNode->mThreads.push_back(tcpConnServerThread);
+			pthread_mutex_unlock( &commTestNode->mThreadsMutex );
+			tcpConnServerThread->start(tcpConnArg);
          }
 	    
 	}
 	return NULL;
-
 }

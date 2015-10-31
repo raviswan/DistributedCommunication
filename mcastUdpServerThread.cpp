@@ -7,14 +7,13 @@ McastUdpServerThread::~McastUdpServerThread(){
 }; 
 
 void* McastUdpServerThread::run(void *arg){
-	McastUdpServerThreadArg* threadArg = (McastUdpServerThreadArg*) arg;
-	CommTestNode *commTestNode = threadArg->ctNode;
+	//McastUdpServerThreadArg* threadArg = (McastUdpServerThreadArg*) arg;
+	//CommTestNode *commTestNode = threadArg->ctNode;
 	int uSock;
 	int bytesSent;
 	in_addr sockOption;
 	char pingMsg[BUF_SIZE];
 	struct sockaddr_in dstMcastAddr;
-	int interval = 2;
 	/*Send the multicast packet over the default interface chosen by kernel*/
 	sockOption.s_addr = INADDR_ANY;
 	if((uSock = socket(AF_INET,SOCK_DGRAM,0))==-1){

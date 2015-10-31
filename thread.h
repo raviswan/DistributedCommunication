@@ -9,16 +9,20 @@ class Thread
 {
 public:
     Thread();
-    virtual ~Thread() { }
+    virtual ~Thread(); 
     const pthread_t& getThreadID() const;
-    bool join();
+    void join();
     virtual void* run(void* arg) = 0;
-    static void* threadProc(void* arg);
-
+    virtual void start(void *arg);
+    
 private:
     Thread(const Thread&);               
-    Thread& operator=(const Thread&);    
-    pthread_t m_tid;
+    Thread& operator=(const Thread&); 
+    static void* threadFunc(void* arg); 
+    //The thread argument passed to Start()  
+    void *derivedObjArg; 
+    bool hasJoined;
+    pthread_t mThreadID;
 };
 
 #endif

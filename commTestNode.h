@@ -49,7 +49,8 @@ class CommTestNode
 
 public:
 	CommTestNode();
-	void Init();
+	void StartThreads();
+	void StopThreads();
 	void setNameAndIPAddress();
 	void sendMcastPingOverUDP();
 	void recvMcastPingOverUDP();
@@ -62,7 +63,7 @@ public:
 	void measureNeighborBandwidth(string ipAddr);
 	bool connectToTCPServer(string ipAddr);
 	void startTcpClientForNeighbor(string ipAddr);
-	void setNeighborRTT(int long val);
+
 
 	string getIPAddress() const;
 	string getName() const;
@@ -72,8 +73,8 @@ private:
 	string ipAddress;
 	std::map <string,NodeInfo > mNeighbors;
 	std::vector<Thread*> mThreads;
-	pthread_mutex_t mThreadLock;
-	pthread_mutex_t mNeighborMapLock;
+	pthread_mutex_t mThreadsMutex;
+	pthread_mutex_t mNeighborsMutex;
 
 
 };

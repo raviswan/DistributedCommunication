@@ -30,6 +30,11 @@ private:
 	char buf[BUF_SIZE];
 	double mRTT;
 	double mBW;
+	//For BW measurement
+	double totalBytes;
+	double bwCounter;
+	double bwSum;
+	long testMessageCount;
 
 };
 

@@ -1,12 +1,5 @@
 #include "tcpClientThread.h"
 
-static double testMessageCount = 0;
-static double totalBytes = 0.0;
-//For BW measurement
-static double bwCounter = 1;
-static double bwSum = 0.0;
-
-
 double subtractTimeVal(struct timeval *currTime,struct timeval *prevTime){
 	double timeDiff;
 	timeDiff = currTime->tv_sec - prevTime->tv_sec;
@@ -20,6 +13,10 @@ TcpClientThread::TcpClientThread():Thread(){
 	FD_ZERO(&mFDSet);
 	mRTT = -1;
 	mBW = -1;
+	testMessageCount = 0;
+	totalBytes = 0.0;
+	bwCounter = 1;
+	bwSum = 0.0;
 };
 
 TcpClientThread::~TcpClientThread(){
@@ -33,12 +30,14 @@ void TcpClientThread::measureNeighborLatency(string ipAddr,
     else
     	//weighted average
         mRTT = 0.8*mRTT + 0.2*currentRTT;
+    pthread_mutex_lock( &mTestNodePtr->mNeighborsMutex);
     mTestNodePtr->mNeighbors[ipAddr].linkRTT = mRTT;
+    pthread_mutex_unlock( &mTestNodePtr->mNeighborsMutex);
 }
 
 void TcpClientThread::sendPacketToServer(int sock) {
     bzero(buf,BUF_SIZE);
-    sprintf(buf, "Test message %g\n",testMessageCount++);
+    sprintf(buf, "Test message %ld\n",testMessageCount++);
     if(send(sock, buf, strlen(buf), 0) < 0){
         perror("Error sendPacketToServer()");
         return;
@@ -59,19 +58,20 @@ void TcpClientThread::measureNeighborBandwidth(string ipAddr,double *bytesRcvd,
 		//averaging BW with time
 		mBW = bwSum/bwCounter;
 	}
+	pthread_mutex_lock( &mTestNodePtr->mNeighborsMutex);
 	mTestNodePtr->mNeighbors[ipAddr].linkBW = mBW;
+	pthread_mutex_unlock( &mTestNodePtr->mNeighborsMutex);
 }
 
 void* TcpClientThread::run(void *arg){
 	TcpClientThreadArg* threadArg = (TcpClientThreadArg*) arg;
 	mTestNodePtr = threadArg->ctNode;
 	string ipAddr = threadArg->ipStr;
-	//Get the socket to talk to the server
+	//Get the socket that talks to the server
 	int fd = mTestNodePtr->mNeighbors[ipAddr].tcpConnSocket;
 	int retVal;
 	int firstPktFlag = 0;
 	double bytesRcvd = 0.0;
-	sockaddr_in dstSrvAddr;
 	struct timespec timeout;
     struct timeval startTime,currTime,firstPktTime,nthPktTime;
     startTime.tv_sec = 0;
@@ -93,9 +93,10 @@ void* TcpClientThread::run(void *arg){
 			mFDMax = fd + 1; 
 		gettimeofday(&startTime,NULL);
         sendPacketToServer(fd);
-
-		if (pselect(mFDMax,&mFDSet,NULL,NULL,&timeout,NULL) > 0 ){
+        retVal = pselect(mFDMax,&mFDSet,NULL,NULL,&timeout,NULL);
+		if (retVal> 0){
 			if(FD_ISSET(fd,&mFDSet)){
+				bzero(buf,BUF_SIZE);
 				gettimeofday(&currTime,NULL);
             	bytesRcvd = read(fd,buf,BUF_SIZE);
 				measureNeighborLatency(ipAddr,&startTime,&currTime);
@@ -109,6 +110,9 @@ void* TcpClientThread::run(void *arg){
 						&currTime);
 
 			}
+		}
+		else{
+			perror("tcpClientThread pselect()");
 		}
 	}	
 	return NULL;	

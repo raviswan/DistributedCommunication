@@ -48,7 +48,9 @@ void* McastUdpClientThread::run(void *arg){
 				printf("Received from %s: %s",ip,rBuf);
 				/*Add mcast neighbor's ip address to neigbor map. 
 				TPC connection socket to neighbor will be obtained later*/
+				pthread_mutex_lock( &commTestNode->mNeighborsMutex);
 				commTestNode->addNeighbor(ip,0,false);
+				pthread_mutex_unlock( &commTestNode->mNeighborsMutex);
 			}		
 		}
 		sleep(UDP_PING_INTERVAL);
