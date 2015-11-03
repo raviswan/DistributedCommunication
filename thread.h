@@ -4,6 +4,8 @@
 #include <iostream>
 #include <exception>
 #include <pthread.h>
+#include <cstdlib>
+#include <cstdio>
 
 class Thread
 {
@@ -12,7 +14,7 @@ public:
     virtual ~Thread(); 
     const pthread_t& getThreadID() const;
     void join();
-    virtual void* run(void* arg) = 0;
+    virtual void* run(void* arg);
     virtual void start(void *arg);
     
 private:

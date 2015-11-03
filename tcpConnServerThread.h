@@ -9,6 +9,7 @@ class CommTestNode;
 typedef struct _TcpConnServerThreadArg{
 	int connectedSocket;
 	string ipAddress;
+	CommTestNode *ctNode;
 } TcpConnServerThreadArg;
 
 class TcpConnServerThread : public Thread{

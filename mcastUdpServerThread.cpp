@@ -1,45 +1,95 @@
 #include "mcastUdpServerThread.h"
 
 McastUdpServerThread::McastUdpServerThread():Thread(){
-};
+	mFDMax = 0;
+	FD_ZERO(&mFDSet);
+}
 
 McastUdpServerThread::~McastUdpServerThread(){
-}; 
+}
 
 void* McastUdpServerThread::run(void *arg){
-	//McastUdpServerThreadArg* threadArg = (McastUdpServerThreadArg*) arg;
-	//CommTestNode *commTestNode = threadArg->ctNode;
-	int uSock;
-	int bytesSent;
-	in_addr sockOption;
-	char pingMsg[BUF_SIZE];
-	struct sockaddr_in dstMcastAddr;
-	/*Send the multicast packet over the default interface chosen by kernel*/
-	sockOption.s_addr = INADDR_ANY;
-	if((uSock = socket(AF_INET,SOCK_DGRAM,0))==-1){
-		printf("udp send socket() fail\n");
-		return NULL;
+	McastUdpServerThreadArg* threadArg = (McastUdpServerThreadArg*) arg;
+	CommTestNode *commTestNode = threadArg->ctNode;
+	int rSock;
+	int bytesRcvd;
+	//char ip[INET_ADDRSTRLEN];
+	struct ip_mreq mcastAddReq;
+	sockaddr_in srvAddr;
+	sockaddr_in fromAddr;
+	socklen_t fromAddrSize = sizeof(fromAddr);
+	int retVal;
+	u_char loop = 0;
+	u_char loopGet;
+	socklen_t sizeGet;
+
+	if((rSock = socket(AF_INET,SOCK_DGRAM,0))==-1){
+		printf("udp recv socket() fail\n");
+		goto ENDMSRV;
 	}
-	if (setsockopt(uSock,IPPROTO_IP,IP_MULTICAST_IF,&sockOption,
-		sizeof(struct in_addr))==-1){
-		printf("setsockopt IP_MULTICAST_IF send side failed\n");
+	//sockVal = 1;
+  	//setsockopt(rSock, SOL_SOCKET, SO_REUSEADDR,  (const void *)&sockVal , sizeof(int));
+	setsockopt(rSock, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
+	memset(&mcastAddReq, 0, sizeof(struct ip_mreq));
+	
+
+	getsockopt(rSock, IPPROTO_IP, IP_MULTICAST_LOOP, &loopGet, &sizeGet);
+	printf("Server: getsockopt() IP_MULTICAST_LOOP=%d\n",loopGet);
+	mcastAddReq.imr_multiaddr.s_addr = inet_addr(MULTICAST_ADDRESS);
+	mcastAddReq.imr_interface.s_addr = htonl(INADDR_ANY);
+	if (setsockopt(rSock,IPPROTO_IP,IP_ADD_MEMBERSHIP,&mcastAddReq,
+		sizeof(struct ip_mreq))==-1){
+		printf("setsockopt IP_MULTICAST_ADD_MEMBERSHIP recv side failed\n");
 	}
-	dstMcastAddr.sin_family = AF_INET;
-	dstMcastAddr.sin_port = htons(UDP_MULTICAST_PORT);
-	dstMcastAddr.sin_addr.s_addr = inet_addr(MULTICAST_ADDRESS);
-	int i=0;
+	bzero((char *) &srvAddr, sizeof(srvAddr));
+	srvAddr.sin_family = AF_INET;
+	srvAddr.sin_port = htons(UDP_MULTICAST_PORT);
+	srvAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	
+	if(bind(rSock,(sockaddr *)&srvAddr,sizeof(srvAddr))< 0){
+		perror("Error binding mcast UDP rcv socket");
+		exit(1);
+	}
 	while(1){
-		sprintf(pingMsg, "%s %d\n", UDP_PING_MESSAGE,i);
-		if ((bytesSent = sendto(uSock,pingMsg,strlen(pingMsg),0,
-			(struct sockaddr*)&dstMcastAddr,sizeof(dstMcastAddr))) == -1){
-			perror("UDP MCAST sendto() failure");
-			exit(1);
+		FD_ZERO(&mFDSet);
+		FD_SET(rSock,&mFDSet);
+		if(rSock >= mFDMax)
+			mFDMax = rSock + 1; 
+        retVal = pselect(mFDMax,&mFDSet,NULL,NULL,NULL,NULL);
+		if (retVal> 0){
+			if(FD_ISSET(rSock,&mFDSet)){
+				bzero(mBuf,BUF_SIZE);
+				bytesRcvd = recvfrom(rSock,(char *)mBuf,BUF_SIZE,0,
+					(struct sockaddr *)&fromAddr,&fromAddrSize);
+				if(bytesRcvd > 0){
+					//if(inet_ntop(AF_INET, &fromAddr, ip, INET_ADDRSTRLEN)!=NULL){
+					if(inet_ntoa(fromAddr.sin_addr)!=NULL){
+						printf("Received from ip=%s: port:%d\n",
+							inet_ntoa(fromAddr.sin_addr),ntohs(fromAddr.sin_port));
+						/*Add mcast neighbor's ip address to neigbor map. 
+						TPC connection socket to neighbor will be obtained later*/
+						commTestNode->addNeighbor(inet_ntoa(fromAddr.sin_addr),0,false);
+					}		
+				}
+				else{
+					perror("mcastUdpServer recvfrom() fail");
+					break;
+				}
+			}
 		}
-		printf("Sent %s\n",pingMsg);
-		sleep(UDP_PING_INTERVAL);
-		i++;
+		else{
+			perror("mcastUdpServer pselect");
+			break;
+		}
 	}
-	close(uSock);
+	close(rSock);
+ENDMSRV:
+	//commTestNode->removeAllNeighbors();
+	if(threadArg!=NULL)
+		delete threadArg;	
+	commTestNode->removeAllNeighbors();
 	return NULL;
 
 }
+
+

@@ -17,6 +17,8 @@ public:
 	~McastUdpClientThread();
 protected:
 	void* run(void* arg);
+private:
+	
 
 };
 

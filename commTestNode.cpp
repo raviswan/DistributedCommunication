@@ -4,10 +4,6 @@
 #include "mcastUdpServerThread.h"
 #include "mcastUdpClientThread.h"
 
-/*
---------TO DO-------------
-Add mutex for mThreads,mNeighbors
- */
 
 void * Malloc(int size){
 	void *p = malloc(size);
@@ -19,11 +15,13 @@ void * Malloc(int size){
 		return p;
 }
 
+
 //Convert a struct sockaddr address to IPv4 string
 int getIPAddress(struct sockaddr *sa, char *ipAddr){
 	char ip[INET_ADDRSTRLEN];
     if(sa->sa_family == AF_INET) {
-    	if(inet_ntop(AF_INET, &(((struct sockaddr_in *)sa)->sin_addr),ip, INET_ADDRSTRLEN) != NULL){
+    	if(inet_ntop(AF_INET, &(((struct sockaddr_in *)sa)->sin_addr),
+    		ip, INET_ADDRSTRLEN) != NULL){
     		/*copy the address into ipAddr*/
 			memcpy(ipAddr,ip,INET_ADDRSTRLEN);
 			return 1;
@@ -70,27 +68,37 @@ int generateRandomNameAndIP(const char* prefix, const char* netmask,
 
 }
 
+void networkStatsHandler(void* arg){
+	CommTestNode *ctNode = (CommTestNode*) arg;
+	ctNode->printNetworkStatistics();
+}
+
 CommTestNode::CommTestNode(){
+	
 }
 
 CommTestNode::~CommTestNode(){
+
 }
 
 void CommTestNode::StartThreads(){
-	//TcpServerThreadArg* threadArg = (TcpServerThreadArg*) Malloc(sizeof(TcpServerThreadArg));
-	TcpServerThreadArg* threadArg = new TcpServerThreadArg;
-	if(!threadArg){
+	if(pthread_mutex_init( &mNeighborsMutex, NULL)!= 0)
+		exit(1);
+	if(pthread_mutex_init( &mThreadsMutex, NULL)!= 0)
+		exit(1);
+
+	TcpServerThreadArg* tcsArg = new TcpServerThreadArg;
+	if(!tcsArg){
 		printf("ERROR: Could not instantiate TcpServerThreadArg object");
 		exit(1);
 	}
-	threadArg->ctNode = this;
+	tcsArg->ctNode = this;
 	Thread* tcpSrvThread = new TcpServerThread();
 	pthread_mutex_lock( &mThreadsMutex );
 	mThreads.push_back(tcpSrvThread);
 	pthread_mutex_unlock( &mThreadsMutex );
-	tcpSrvThread->start(threadArg);
+	tcpSrvThread->start(tcsArg);
 
-	//McastUdpServerThreadArg* msArg = (McastUdpServerThreadArg*) Malloc(sizeof(McastUdpServerThreadArg));
 	McastUdpServerThreadArg* msArg =  new McastUdpServerThreadArg;
 	if(!msArg){
 		printf("ERROR: Could not instantiate McastUdpServerThreadArg object");
@@ -103,7 +111,6 @@ void CommTestNode::StartThreads(){
 	pthread_mutex_unlock( &mThreadsMutex );
 	mcastUdpSrvThread->start(msArg);
 
-	//McastUdpClientThreadArg* mcArg = (McastUdpClientThreadArg*) Malloc(sizeof(McastUdpClientThreadArg));
 	McastUdpClientThreadArg* mcArg = new McastUdpClientThreadArg;
 	if(!mcArg){
 		printf("ERROR: Could not instantiate McastUdpClientThreadArg object");
@@ -162,23 +169,26 @@ void CommTestNode::addNeighbor(const char* ipStr, int sock,
 		printf("adding %s to neighbor map\n",ipStr);
 		mNeighbors.insert ( std::pair<string,NodeInfo>(ipAddr,node));
 		pthread_mutex_unlock( &mNeighborsMutex );
+		printNeighbors();
 		/*Initiate tcp connection to server for this newly added neighbor*/
 		connectToTCPServer(ipAddr);
 	}
 
 }
 
-void CommTestNode::updateNeighbor(string ipStr, int sock, bool connFlag){
-	/*Mutex*/
+void CommTestNode::updateNeighbor(string ipAddr, int sock, bool connFlag){
+	std::map<string,NodeInfo>::iterator it;
 	pthread_mutex_lock( &mNeighborsMutex );
-	mNeighbors[ipStr].tcpConnSocket = sock;
-	mNeighbors[ipStr].tcpConnFlag = connFlag;
+	if( (it = mNeighbors.find(ipAddr)) != mNeighbors.end()){
+		mNeighbors[ipAddr].tcpConnSocket = sock;
+		mNeighbors[ipAddr].tcpConnFlag = connFlag;
+	}
 	pthread_mutex_unlock( &mNeighborsMutex );
 }
 
-void CommTestNode::removeNeighbor(const char* ipStr){
+void CommTestNode::removeNeighbor(string ipAddr){
 	std::map<string,NodeInfo>::iterator it;
-	string ipAddr(ipStr);
+	//string ipAddr(ipStr);
 	pthread_mutex_lock( &mNeighborsMutex );
 	it =  mNeighbors.find(ipAddr);
 	if (it != mNeighbors.end()){
@@ -189,14 +199,29 @@ void CommTestNode::removeNeighbor(const char* ipStr){
 		
 }
 
+void CommTestNode::removeAllNeighbors(){
+	pthread_mutex_lock(&mNeighborsMutex);
+	for(std::map<string,NodeInfo>::iterator it = mNeighbors.begin();
+		it!=mNeighbors.end();++it){
+			mNeighbors.erase(it);
+	}
+	pthread_mutex_unlock(&mNeighborsMutex);
+	
+	printf("erased all neighbors\n");
+		
+}
 
 bool CommTestNode::connectToTCPServer(string ipAddr){
 	int cliSock;
-	int retVal;
+	int retVal,sockVal;
 	sockaddr_in dstSrvAddr;
 	if((cliSock = socket(AF_INET,SOCK_STREAM,0))==-1){
 		perror("tcp server socket() fail");
 	}
+	sockVal = 1;
+  	setsockopt(cliSock, SOL_SOCKET, SO_REUSEADDR, 
+	     (const void *)&sockVal , sizeof(int));
+  	bzero((char *) &dstSrvAddr, sizeof(dstSrvAddr));
 	dstSrvAddr.sin_family = AF_INET;
 	dstSrvAddr.sin_port = htons(TCP_SERVER_PORT);
 	dstSrvAddr.sin_addr.s_addr = inet_addr(ipAddr.c_str());
@@ -205,6 +230,7 @@ bool CommTestNode::connectToTCPServer(string ipAddr){
 		perror("Client socket conect() failed with");
 		return false;
 	}
+	printf("Tcp Client connect() succceeded with sock=%d\n",cliSock);
 	/*Update neighbor map with this newneighbor*/
 	this->updateNeighbor(ipAddr,cliSock,true);
 	startTcpClientForNeighbor(ipAddr);
@@ -212,175 +238,56 @@ bool CommTestNode::connectToTCPServer(string ipAddr){
 
 }
 void CommTestNode::startTcpClientForNeighbor(string ipAddr){
+	printf("Starting tcp client to talk to %s\n",ipAddr.c_str());
 	TcpClientThreadArg* threadArg = new TcpClientThreadArg;
 	if(!threadArg){
 		printf("ERROR: Could not instantiate TcpClientThreadArg object");
-		exit(1);
+		return;
 	}
 	threadArg->ctNode = this;
 	threadArg->ipStr =  ipAddr;
-	Thread* tcpSrvThread = new TcpClientThread();
+	Thread* tcpCliThread = new TcpClientThread();
 	pthread_mutex_lock( &mThreadsMutex );
-	mThreads.push_back(tcpSrvThread);
+	mThreads.push_back(tcpCliThread);
 	pthread_mutex_unlock( &mThreadsMutex );
-	tcpSrvThread->start(threadArg);
+	tcpCliThread->start(threadArg);
 
 }
-
-/*
-
-void CommTestNode::getNeighborStats(){
-	std::map<string,NodeInfo>::iterator it = mNeighbors.begin();
-	while( it != mNeighbors.end()){
-		//Already have a connection to the neighbor
-		if(it->second.tcpConnFlag){
-			measureNeighborLatency(it->second.tcpConnSocket);
-			measureNeighborBandwidth(it->first);
-		}
-		else{
-			//The new neighbor was just added. So connect to server first before measuring the latency
-			if(connectToTCPServer(it->first)){
-				//it->second.rtt = measureNeighborLatency(it->second.tcpConnSocket);
-				measureNeighborBandwidth(it->first);
-			}
-		}
-		it++;
+void CommTestNode::printNetworkStatistics(void){
+	pthread_mutex_lock(&mNeighborsMutex);
+	for(std::map<string,NodeInfo>::iterator it = mNeighbors.begin();
+		it!=mNeighbors.end();++it){
+		printf("Neighbor %s: Bandwith=%10g kbps, RTT=%5g msec\n",it->first.c_str(),mNeighbors[it->first].linkBW,
+			mNeighbors[it->first].linkRTT);
 	}
+	pthread_mutex_unlock(&mNeighborsMutex);
+}
+
+void CommTestNode::printNeighbors(void){
+	printf("Neighbors are:\n\n");
+	pthread_mutex_lock(&mNeighborsMutex);
+	for(std::map<string,NodeInfo>::iterator it = mNeighbors.begin();
+		it!=mNeighbors.end();++it)
+		printf("%s\n",it->first.c_str());
+	pthread_mutex_unlock(&mNeighborsMutex);
 }
 
 
-
-
-
-void CommTestNode::runTCPServer(){
-	int tSock,connSock;
-	socklen_t tcpCliSize;
-	char connBuf[RECV_BUF_LEN];
-	char ipAddr[INET_ADDRSTRLEN];
-	int retVal;
-	int portNum;
-
-	sockaddr_in tcpSrvAddr,tcpCliAddr;
-	if((tSock = socket(AF_INET,SOCK_STREAM,0))==-1){
-		printf("tcp server socket() fail\n");
-	}
-	tcpSrvAddr.sin_family = AF_INET;
-	tcpSrvAddr.sin_port = htons(TCP_SERVER_PORT);
-	tcpSrvAddr.sin_addr.s_addr = INADDR_ANY;
-	retVal = bind(tSock,(sockaddr *)&tcpSrvAddr,sizeof(tcpSrvAddr));
-	if (retVal == -1){
-		perror("TCP Server bind()");
-		return;
-	}
-	listen(tSock,TCP_LISTEN_LIMIT);
-	tcpCliSize = sizeof(tcpCliAddr);
-	while(1){
-		connSock = accept(tSock, (struct sockaddr*)&tcpCliAddr, &tcpCliSize);
-		if (connSock < 0) 
-			perror("error on accept()");
-        else{
-        	::getIPAddress((struct sockaddr*)&tcpCliAddr,ipAddr);
-			this->addNeighbor(ipAddr,connSock,true);
-         }
-         sleep(1);  
-	    
-	}
-}
-
-void CommTestNode::sendMcastPingOverUDP(){
-	int uSock;
-	int bytesSent;
-	in_addr sockOption;
-	char pingMsg[BUF_SIZE];
-	struct sockaddr_in dstMcastAddr;
-	int interval = 2;
-	sockOption.s_addr = INADDR_ANY;
-	if((uSock = socket(AF_INET,SOCK_DGRAM,0))==-1){
-		printf("udp send socket() fail\n");
-	}
-	if (setsockopt(uSock,IPPROTO_IP,IP_MULTICAST_IF,&sockOption,
-		sizeof(struct in_addr))==-1){
-		printf("setsockopt IP_MULTICAST_IF send side failed\n");
-	}
-	dstMcastAddr.sin_family = AF_INET;
-	dstMcastAddr.sin_port = htons(UDP_MULTICAST_PORT);
-	dstMcastAddr.sin_addr.s_addr = inet_addr(MULTICAST_ADDRESS);
-	int i=0;
-	while(1){
-		sprintf(pingMsg, "%s %d\n", UDP_PING_MESSAGE,i);
-		if ((bytesSent = sendto(uSock,pingMsg,strlen(pingMsg),0,
-			(struct sockaddr*)&dstMcastAddr,sizeof(dstMcastAddr))) == -1){
-			perror("UDP MCAST sendto() failure");
-			exit(1);
-		}
-		printf("Sent %s\n",pingMsg);
-		sleep(UDP_PING_INTERVAL);
-		i++;
-	}
-	close(uSock);
-	return;
-
-}
-
-void CommTestNode::recvMcastPingOverUDP(){
-	int rSock;
-	int bytesRcvd;
-	char rBuf[RECV_BUF_LEN];
-	char ip[INET_ADDRSTRLEN];
-	struct ip_mreq mcastAddReq;
-	sockaddr_in recvAddr;
-	sockaddr_in fromAddr;
-	socklen_t fromAddrSize = sizeof(fromAddr);
-	int retVal;
-
-	if((rSock = socket(AF_INET,SOCK_DGRAM,0))==-1){
-		printf("udp recv socket() fail\n");
-	}
-
-	memset(&mcastAddReq, 0, sizeof(struct ip_mreq));
-	mcastAddReq.imr_multiaddr.s_addr = inet_addr(MULTICAST_ADDRESS);
-	mcastAddReq.imr_interface.s_addr = INADDR_ANY;
-	if (setsockopt(rSock,IPPROTO_IP,IP_ADD_MEMBERSHIP,&mcastAddReq,
-		sizeof(struct ip_mreq))==-1){
-		printf("setsockopt IP_MULTICAST_ADD_MEMBERSHIP recv side failed\n");
-	}
-
-	recvAddr.sin_family = AF_INET;
-	recvAddr.sin_port = htons(UDP_MULTICAST_PORT);
-	recvAddr.sin_addr.s_addr = INADDR_ANY;
-	retVal = bind(rSock,(sockaddr *)&recvAddr,sizeof(recvAddr));
-	if(retVal == -1){
-		perror("Error binding mcast UDP rcv socket");
-		exit(1);
-	}
-	while(1){
-		memset(rBuf,0,sizeof(rBuf));
-		bytesRcvd = recvfrom(rSock,(char *)&rBuf,RECV_BUF_LEN,0,
-			(struct sockaddr *)&fromAddr,&fromAddrSize);
-		if(bytesRcvd > 0){
-			if(inet_ntop(AF_INET, &fromAddr, ip, INET_ADDRSTRLEN)!=NULL){
-				printf("Received from %s: %s",ip,rBuf);
-				this->addNeighbor(ip,0,false);
-			}		
-		}
-		sleep(UDP_PING_INTERVAL);
-	}
-	close(rSock);
-	return;
-
-}
-*/
 
 int main(){
 	/*initialize random generator seed*/
 	srand(time(NULL));
 	CommTestNode *cn = new CommTestNode();
 	cn->StartThreads();
-	cn->StopThreads();
+	TcpClientThread::RegisterNetworkStatsHandler(networkStatsHandler);
+	//cn->StopThreads();
 	//setenv("myIP",(const char*) MY_IP_ADDR,1);
 	//system("echo \"ping $myIP\"");
 	//system("ping $myIP");
 	//TestNodeIPAndName();
+	getc(stdin);
+	cn->StopThreads();
+	delete cn;
 	return 0;
 	
 }

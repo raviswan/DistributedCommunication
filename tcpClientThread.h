@@ -4,6 +4,8 @@
 #include "commTestNode.h"
 #include "thread.h"
 
+typedef void (*NetworkStatsFuncType)(void *);
+
 class CommTestNode;
 
 typedef struct _TcpClientThreadArg{
@@ -16,25 +18,28 @@ class TcpClientThread : public Thread {
 public:
 	TcpClientThread();
 	~TcpClientThread();
-protected:
 	void measureNeighborLatency(string ipAddr, struct timeval *prevTime,
 	 struct timeval *currentTime);
 	void measureNeighborBandwidth(string ipAddr,double *bytesRcvd,
-		struct timeval *firstPktTime,struct timeval* currTime);
-	void sendPacketToServer(int sock);
+	struct timeval *firstPktTime,struct timeval* currTime);
+	//void sendPacketToServer(int sock);
+	static void RegisterNetworkStatsHandler(NetworkStatsFuncType fPtr);
+protected:
 	void* run(void* arg); 
 private:
 	CommTestNode *mTestNodePtr;
 	fd_set mFDSet;
 	int mFDMax;
 	char buf[BUF_SIZE];
+	char *mCharBuf;
 	double mRTT;
 	double mBW;
 	//For BW measurement
 	double totalBytes;
 	double bwCounter;
 	double bwSum;
-	long testMessageCount;
+	unsigned long long testMessageCount;
+	static NetworkStatsFuncType fnPtr;
 
 };
 

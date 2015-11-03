@@ -17,6 +17,10 @@ public:
 	~McastUdpServerThread();
 protected:
 	void* run(void* arg);
+private: 
+	char mBuf[BUF_SIZE];
+	fd_set mFDSet;
+	int mFDMax;
 
 };
 

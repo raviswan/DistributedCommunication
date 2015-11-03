@@ -1,6 +1,6 @@
 #include "thread.h"
 
-Thread::Thread(){
+Thread::Thread():hasJoined(false){
 }
 
 Thread::~Thread(){
@@ -40,8 +40,14 @@ void Thread::join(){
     }
 }
 
+
 const pthread_t& Thread::getThreadID() const { 
     return mThreadID; 
+}
+
+void* Thread::run(void* arg){
+    printf("Thread run() should not be\n");
+    return NULL;
 }
 
 void* Thread::threadFunc(void* arg){
