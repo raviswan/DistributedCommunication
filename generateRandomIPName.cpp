@@ -51,4 +51,31 @@ int generateRandomNameAndIP(const char* prefix, const char* netmask,
 
 }
 
+void CommTestNode::setNameAndIPAddress(){
+	char ipStr[INET_ADDRSTRLEN];
+	char nameStr[NODENAME_LIMIT];
+	if (generateRandomNameAndIP(NETWORK_PREFIX, NETMASK, ipStr, nameStr)==1){
+		string ipaddr(ipStr);
+		string nodeName(nameStr);
+		this->ipAddress = ipaddr;
+		this->name = nodeName;
+	}
+}
 
+int main(){
+	/*initialize random generator seed*/
+	srand(time(NULL));
+	CommTestNode *cn = new CommTestNode();
+	cn->StartThreads();
+	TcpClientThread::RegisterNetworkStatsHandler(networkStatsHandler);
+	//cn->StopThreads();
+	//setenv("myIP",(const char*) MY_IP_ADDR,1);
+	//system("echo \"ping $myIP\"");
+	//system("ping $myIP");
+	//TestNodeIPAndName();
+	getc(stdin);
+	cn->StopThreads();
+	delete cn;
+	return 0;
+	
+}

@@ -45,7 +45,8 @@ void* TcpServerThread::run(void *arg){
         else{
         	::getIPAddress((struct sockaddr*)&tcpCliAddr,ipAddr);
         	printf("TCP client %s is connected to  address is %s\n",ipAddr,ipAddrServer);
-        	/*Spawn new thread for every accepted connection*/
+        	/*Spawn new thread for every accepted connection.
+        	Forking is another possiblity. To be considered later*/
 			TcpConnServerThreadArg* tcpConnArg = new TcpConnServerThreadArg;
 			if(!tcpConnArg){
 				printf("ERROR: Could not instantiate TcpServerThreadArg object");
@@ -67,6 +68,6 @@ END:
 	if(threadArg!=NULL)
 		delete threadArg;
 	commTestNode->removeAllNeighbors();
-	//commTestNode->StopThreads();
+	commTestNode->StopThreads();
 	return NULL;
 }

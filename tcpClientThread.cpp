@@ -35,7 +35,7 @@ void TcpClientThread::measureNeighborLatency(string ipAddr,
     if(mRTT < 0)
     	mRTT = currentRTT;
     else
-    	//weighted average
+    	//weighted average so that current value doesn't skew the result
         mRTT = 0.8*mRTT + 0.2*currentRTT;
     pthread_mutex_lock( &mTestNodePtr->mNeighborsMutex);
     //RTT in msec
@@ -43,35 +43,31 @@ void TcpClientThread::measureNeighborLatency(string ipAddr,
     pthread_mutex_unlock( &mTestNodePtr->mNeighborsMutex);
 }
 
-//void TcpClientThread::sendPacketToServer(int sock) {
-    //bzero(buf,BUF_SIZE);
-   
-   // sprintf(buf, "Test message %ld\n",testMessageCount++);
-    //if(send(sock, buf, strlen(buf), 0) < 0){
-   
-  
-//}
 
 void TcpClientThread::measureNeighborBandwidth(string ipAddr,double *bytesRcvd,
 	struct timeval *firstPktTime,struct timeval* currentTime) {
 	/*For tx and receive, so twice*/
 	totalBytes += (*bytesRcvd * 2);
 	double totalTimeTaken = subtractTimeVal(currentTime,firstPktTime);
-	double currentBW = (totalBytes)/(1024)/totalTimeTaken;
+	/*current bandwidth = total bytes recvd / 
+	(time taken to receive this packet - time taken to receive first packet
+	Assumes processing time to tx packets is neglible compared to link latency*/
+	double currentBW = (totalBytes)/totalTimeTaken;
 	if (mBW <0)
 		mBW = currentBW;
 	else{
 		bwCounter++;
 		bwSum += currentBW;
-		//averaging BW with time
+		//averaging BW 
 		mBW = bwSum/bwCounter;
 	}
-	/* If REPORTING_INTERVAL=50, the BW/RTT values are reported  every 50 reads*/
+	/* BW&RTT values reported every REPORTING_INTERVAL tcp read() calls*/
 	if(!(++testMessageCount%REPORTING_INTERVAL)){
 		pthread_mutex_lock( &mTestNodePtr->mNeighborsMutex);
-		/*BW in Kbits/sec*/
-		mTestNodePtr->mNeighbors[ipAddr].linkBW = mBW*8;
+		/*Update BW in Kbps in neighbot structure*/
+		mTestNodePtr->mNeighbors[ipAddr].linkBW = (mBW*8)/1024;
 		pthread_mutex_unlock( &mTestNodePtr->mNeighborsMutex);
+		/*Callback invoked*/
 		fnPtr(mTestNodePtr);
 	}
 }
@@ -104,11 +100,10 @@ void* TcpClientThread::run(void *arg){
 		if(fd >= mFDMax)
 			mFDMax = fd + 1; 
 		gettimeofday(&startTime,NULL);
-        //sendPacketToServer(fd);
+        //send buffer contents to server continually
         if(send(fd, mCharBuf, sizeof(mCharBuf), 0) < 0){
 	        perror("Error sendPacketToServer()");
-	        //goto ENDCLIENT;
-	        continue;
+	        goto ENDCLIENT;
     	}
         retVal = pselect(mFDMax,&mFDSet,NULL,NULL,&timeout,NULL);
 		if (retVal> 0){
@@ -118,7 +113,8 @@ void* TcpClientThread::run(void *arg){
             	bytesRcvd = read(fd,buf,BUF_SIZE);
 				measureNeighborLatency(ipAddr,&startTime,&currTime);
 				if(!firstPktFlag){
-					/*serves as base time for BW calculation*/
+					/*time of first echoed packet serves as  base time for all 
+					BW calculation*/
 					gettimeofday(&firstPktTime,NULL);
 					firstPktFlag = 1;
 				}

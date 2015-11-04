@@ -5,17 +5,6 @@
 #include "mcastUdpClientThread.h"
 
 
-void * Malloc(int size){
-	void *p = malloc(size);
-	if (p==NULL){
-		fprintf(stderr,"malloc failed\n");
-		return NULL;
-	}
-	else 
-		return p;
-}
-
-
 //Convert a struct sockaddr address to IPv4 string
 int getIPAddress(struct sockaddr *sa, char *ipAddr){
 	char ip[INET_ADDRSTRLEN];
@@ -30,53 +19,18 @@ int getIPAddress(struct sockaddr *sa, char *ipAddr){
   	return -1;
 }
 
-int generateRandomNameAndIP(const char* prefix, const char* netmask, 
-	char* ipAddr, char *nodeName) {
-	unsigned int maxHostSupported,host;
-	in_addr address;
-	in_addr_t netmaskBinary, prefixBinary;
-	char ip[INET_ADDRSTRLEN];
-	char name[NODENAME_LIMIT], temp[NODENAME_LIMIT];
-	memset(name,0,NODENAME_LIMIT);
-	/*convert netmask to binary format in network byte order */
-	netmaskBinary = inet_addr(netmask);
-	/*Convert network byte to host byte order*/
-	netmaskBinary = ntohl(netmaskBinary);
-	/*NOTing netmask gives you the number of nodes supported on this subnet*/
-	maxHostSupported  = ~netmaskBinary;
-	/*generate host ID . 255 is broadcast. hence 1-254 are randomly generated*/
-	host = (rand() % (maxHostSupported-1))+1;
-	
-	/*Node naming convention: "TestNode-HostNo" */
-	sprintf(temp,"%d",host);
-	strcat(name,"TestNode-");
-	strcat(name,temp);
-	strcpy(nodeName,name);
-
-
-	/* Get the final prefix after netmasking */
-	prefixBinary = inet_addr(prefix);
-	prefixBinary = prefixBinary & htonl(netmaskBinary);
-	/*Combine prefix and host to get the final ip address*/
-	address.s_addr = prefixBinary | htonl(host);
-	if(inet_ntop(AF_INET, &address, ip, INET_ADDRSTRLEN)!=NULL){
-		/*copy the address into ipAddr*/
-		memcpy(ipAddr,ip,INET_ADDRSTRLEN);
-		return 1;
-	}
-	return -1;
-
-}
-
+/*Callback function*/
 void networkStatsHandler(void* arg){
 	CommTestNode *ctNode = (CommTestNode*) arg;
 	ctNode->printNetworkStatistics();
 }
 
+/*Constructor*/
 CommTestNode::CommTestNode(){
 	
 }
 
+/*destructor*/
 CommTestNode::~CommTestNode(){
 
 }
@@ -86,7 +40,7 @@ void CommTestNode::StartThreads(){
 		exit(1);
 	if(pthread_mutex_init( &mThreadsMutex, NULL)!= 0)
 		exit(1);
-
+	/*Tcp Server Thread*/
 	TcpServerThreadArg* tcsArg = new TcpServerThreadArg;
 	if(!tcsArg){
 		printf("ERROR: Could not instantiate TcpServerThreadArg object");
@@ -99,6 +53,7 @@ void CommTestNode::StartThreads(){
 	pthread_mutex_unlock( &mThreadsMutex );
 	tcpSrvThread->start(tcsArg);
 
+	/*Mcast UDP Server Thread*/
 	McastUdpServerThreadArg* msArg =  new McastUdpServerThreadArg;
 	if(!msArg){
 		printf("ERROR: Could not instantiate McastUdpServerThreadArg object");
@@ -111,6 +66,7 @@ void CommTestNode::StartThreads(){
 	pthread_mutex_unlock( &mThreadsMutex );
 	mcastUdpSrvThread->start(msArg);
 
+	/*Mcast UDP client*/
 	McastUdpClientThreadArg* mcArg = new McastUdpClientThreadArg;
 	if(!mcArg){
 		printf("ERROR: Could not instantiate McastUdpClientThreadArg object");
@@ -122,8 +78,6 @@ void CommTestNode::StartThreads(){
 	mThreads.push_back(mcastUdpCliThread);
 	pthread_mutex_unlock( &mThreadsMutex );
 	mcastUdpCliThread->start(mcArg);
-
-
 }
 
 void CommTestNode::StopThreads(){
@@ -136,20 +90,6 @@ void CommTestNode::StopThreads(){
 	}
 	pthread_mutex_unlock( &mThreadsMutex );
 	
-}
-void CommTestNode::setNameAndIPAddress(){
-	char ipStr[INET_ADDRSTRLEN];
-	char nameStr[NODENAME_LIMIT];
-	if (generateRandomNameAndIP(NETWORK_PREFIX, NETMASK, ipStr, nameStr)==1){
-		string ipaddr(ipStr);
-		string nodeName(nameStr);
-		this->ipAddress = ipaddr;
-		this->name = nodeName;
-	}
-}
-
-string CommTestNode::getName() const{
-	return this->name;
 }
 
 void CommTestNode::addNeighbor(const char* ipStr, int sock, 
@@ -206,9 +146,7 @@ void CommTestNode::removeAllNeighbors(){
 			mNeighbors.erase(it);
 	}
 	pthread_mutex_unlock(&mNeighborsMutex);
-	
-	printf("erased all neighbors\n");
-		
+	printf("erased all neighbors\n");	
 }
 
 bool CommTestNode::connectToTCPServer(string ipAddr){
@@ -230,7 +168,6 @@ bool CommTestNode::connectToTCPServer(string ipAddr){
 		perror("Client socket conect() failed with");
 		return false;
 	}
-	printf("Tcp Client connect() succceeded with sock=%d\n",cliSock);
 	/*Update neighbor map with this newneighbor*/
 	this->updateNeighbor(ipAddr,cliSock,true);
 	startTcpClientForNeighbor(ipAddr);
@@ -238,7 +175,6 @@ bool CommTestNode::connectToTCPServer(string ipAddr){
 
 }
 void CommTestNode::startTcpClientForNeighbor(string ipAddr){
-	printf("Starting tcp client to talk to %s\n",ipAddr.c_str());
 	TcpClientThreadArg* threadArg = new TcpClientThreadArg;
 	if(!threadArg){
 		printf("ERROR: Could not instantiate TcpClientThreadArg object");
@@ -257,7 +193,8 @@ void CommTestNode::printNetworkStatistics(void){
 	pthread_mutex_lock(&mNeighborsMutex);
 	for(std::map<string,NodeInfo>::iterator it = mNeighbors.begin();
 		it!=mNeighbors.end();++it){
-		printf("Neighbor %s: Bandwith=%10g kbps, RTT=%5g msec\n",it->first.c_str(),mNeighbors[it->first].linkBW,
+		printf("Neighbor %s: Bandwidth=%10g kbps, RTT=%5g msec\n",
+			it->first.c_str(),mNeighbors[it->first].linkBW,
 			mNeighbors[it->first].linkRTT);
 	}
 	pthread_mutex_unlock(&mNeighborsMutex);
@@ -273,22 +210,14 @@ void CommTestNode::printNeighbors(void){
 }
 
 
-
-int main(){
-	/*initialize random generator seed*/
-	srand(time(NULL));
+int main(void){
 	CommTestNode *cn = new CommTestNode();
 	cn->StartThreads();
 	TcpClientThread::RegisterNetworkStatsHandler(networkStatsHandler);
-	//cn->StopThreads();
-	//setenv("myIP",(const char*) MY_IP_ADDR,1);
-	//system("echo \"ping $myIP\"");
-	//system("ping $myIP");
 	//TestNodeIPAndName();
 	getc(stdin);
 	cn->StopThreads();
 	delete cn;
 	return 0;
-	
 }
 

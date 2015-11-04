@@ -17,7 +17,6 @@ void Thread::start(void *arg){
     return;
 }
 
-
 void Thread::join(){
     int retVal;
     if(mThreadID == pthread_self()){

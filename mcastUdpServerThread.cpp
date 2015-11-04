@@ -32,9 +32,8 @@ void* McastUdpServerThread::run(void *arg){
 	setsockopt(rSock, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
 	memset(&mcastAddReq, 0, sizeof(struct ip_mreq));
 	
-
+	/*Enable socket to receive multicast packets*/
 	getsockopt(rSock, IPPROTO_IP, IP_MULTICAST_LOOP, &loopGet, &sizeGet);
-	printf("Server: getsockopt() IP_MULTICAST_LOOP=%d\n",loopGet);
 	mcastAddReq.imr_multiaddr.s_addr = inet_addr(MULTICAST_ADDRESS);
 	mcastAddReq.imr_interface.s_addr = htonl(INADDR_ANY);
 	if (setsockopt(rSock,IPPROTO_IP,IP_ADD_MEMBERSHIP,&mcastAddReq,
@@ -62,7 +61,6 @@ void* McastUdpServerThread::run(void *arg){
 				bytesRcvd = recvfrom(rSock,(char *)mBuf,BUF_SIZE,0,
 					(struct sockaddr *)&fromAddr,&fromAddrSize);
 				if(bytesRcvd > 0){
-					//if(inet_ntop(AF_INET, &fromAddr, ip, INET_ADDRSTRLEN)!=NULL){
 					if(inet_ntoa(fromAddr.sin_addr)!=NULL){
 						printf("Received from ip=%s: port:%d\n",
 							inet_ntoa(fromAddr.sin_addr),ntohs(fromAddr.sin_port));

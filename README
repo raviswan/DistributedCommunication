@@ -1,0 +1,61 @@
+ASSUMPTIONS
+-------------
+1)There's one Communication Test Node (CN) per machine.
+2)All the CNs in a given subnet have an IP address assigned to it.
+3)The network prefix of the local subnet is known to eac node. 
+In this project, it's assumed to be 192.168.10.0
+3)All nodes run a TCP server on a fixed port.
+3)There are no firewalls to be penterated etc.
+4)Code POSIX API and was tested on Linux and Mac systems
+
+
+DESIGN AND IMPLEMENTATION
+---------------------------
+A TCP/UDP multi-threaded application (cn) was developed in C++ to simulate distributed
+communication system. A thread wrapper (thread.cpp) was created to encapsulate
+POSIX function calls and as means to create new threads with ease.
+
+Every CN subscribes to a specific multicast address. As a result, they can see 
+packets coming from all other nodes on the  multicast address.The local loopback
+is disabled so that the machine doesn't hear itself. To detect other nodes on
+the same network, each node runs  Multicast UDP Client thread(mcastUdpClient.cpp)
+that sends a UDP ping every few seconds. The Multicast UDP server
+(mcastUdpClient.cpp)on each node receives the UDP ping packets from its 
+neighbors and extracts each neighbor's IP address and stores it in a STL map 
+called mNeighbors.
+
+In addition to Multicast UDP server and client, every node also fires up a TCP 
+server thread  (tcpServerThread.cpp) when it comes up. The thread initialization
+and neighbor maps are maintained in commTestNode class(commTestNode.cpp)
+
+And every time a new neighbor is found, a new TCP client is brought up 
+(tcpClientThread.cpp) that connects to the neighbor's TCP server.Once the TCP 
+server accepts a connection, it spawns a new thread to echo the TCP client
+message (tcpConnServerThread.cpp). As a result, there will be a  pair of 
+<tcpClienthread,tcpConnServerThread> for every new connected neighbor.
+
+The TCP Client will continually send big packets, which the server echoes back.
+By measuring the difference in timestamps between a packet and its echo,
+the TCP client is able to measure the round trip time. This calculation takes place
+in measureNeighborLatency(). And by keeping track of total bytes received,
+the link bandwidth (BW) is calculated. It is averaged over time to get a more
+resonable approximation of the TCP application bandwidth.
+
+After every n reads, the BW and the RTT are reported back to the main thread(
+i.e.commTestNode.cpp) via a registered callback, and the value are printed
+on the console.
+
+The code was developed on a macbook and the test was validted on a three 
+machine setup(one Macbook and two Ubuntu machines )
+
+
+TO RUN THE CODE
+-----------------
+	$make clean
+	$make
+	$./cn
+
+
+
+
+

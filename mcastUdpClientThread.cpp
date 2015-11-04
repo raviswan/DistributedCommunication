@@ -8,7 +8,7 @@ McastUdpClientThread::~McastUdpClientThread(){
 
 void* McastUdpClientThread::run(void *arg){
 	McastUdpClientThreadArg* threadArg = (McastUdpClientThreadArg*) arg;
-	CommTestNode *commTestNode = threadArg->ctNode;
+	//CommTestNode *commTestNode = threadArg->ctNode;
 	int uSock;
 	int bytesSent;
 	int i=0;;
@@ -24,12 +24,15 @@ void* McastUdpClientThread::run(void *arg){
 		printf("udp send socket() fail\n");
 		goto ENDMCLNT;
 	}
+	/*Disable Multicast loop*/
 	setsockopt(uSock, IPPROTO_IP, IP_MULTICAST_LOOP, &loop, sizeof(loop));
 	getsockopt(uSock, IPPROTO_IP, IP_MULTICAST_LOOP, &loopGet, &sizeGet);
-	printf("Client getsockopt() IP_MULTICAST_LOOP=%d\n",loopGet);
+	//printf("Client getsockopt() IP_MULTICAST_LOOP=%d\n",loopGet);
+	
+	/*Subscribe to a multicast address*/
 	if (setsockopt(uSock,IPPROTO_IP,IP_MULTICAST_IF,&sockOption,
 		sizeof(struct in_addr))==-1){
-		printf("setsockopt IP_MULTICAST_IF send side failed\n");
+		//printf("setsockopt IP_MULTICAST_IF send side failed\n");
 	}
 	bzero((char *) &dstMcastAddr, sizeof(dstMcastAddr));
 	dstMcastAddr.sin_family = AF_INET;

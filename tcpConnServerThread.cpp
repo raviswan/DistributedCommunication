@@ -12,7 +12,6 @@ TcpConnServerThread::~TcpConnServerThread(){
 void* TcpConnServerThread::run(void *arg){
 	TcpConnServerThreadArg* threadArg = (TcpConnServerThreadArg*) arg;
 	int fd= threadArg->connectedSocket;
-	CommTestNode *commTestNode = threadArg->ctNode;
 	double bytesRcvd = 0.0;
 	int retVal;
 	string ipAddr = threadArg->ipAddress;
@@ -30,6 +29,7 @@ void* TcpConnServerThread::run(void *arg){
 			if(FD_ISSET(fd,&mFDSet)){
 				bzero(buf,BUF_SIZE);
 	        	if ((bytesRcvd = read(fd,buf,BUF_SIZE)) > 0){
+	        		/*echo the received packet from tcp client*/
 	        		retVal = write(fd, buf, strlen(buf));
 	        		if (retVal < 0){
 	        			perror("tcpConnServver write() failed");
