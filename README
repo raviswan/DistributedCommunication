@@ -1,12 +1,13 @@
 ASSUMPTIONS
 -------------
 1)There's one Communication Test Node (CN) per machine.
-2)All the CNs in a given subnet have an IP address assigned to it.
-3)The network prefix of the local subnet is known to eac node. 
-In this project, it's assumed to be 192.168.10.0
-3)All nodes run a TCP server on a fixed port.
-3)There are no firewalls to be penterated etc.
-4)Code POSIX API and was tested on Linux and Mac systems
+2)CN assumes underlying network interface has an IPv4 address.
+3)The network prefix of the local subnet is known to each node. In this project,
+  it's assumed to be 192.168.10.0
+4)All nodes run a TCP server on an agreed upon port.
+5)There are no firewalls to be penterated etc.
+6)Code developed and tested on MacOSX/Linux for MacOSX/Linux
+
 
 
 DESIGN AND IMPLEMENTATION
@@ -34,18 +35,26 @@ server accepts a connection, it spawns a new thread to echo the TCP client
 message (tcpConnServerThread.cpp). As a result, there will be a  pair of 
 <tcpClienthread,tcpConnServerThread> for every new connected neighbor.
 
-The TCP Client will continually send big packets, which the server echoes back.
-By measuring the difference in timestamps between a packet and its echo,
-the TCP client is able to measure the round trip time. This calculation takes place
-in measureNeighborLatency(). And by keeping track of total bytes received,
-the link bandwidth (BW) is calculated. It is averaged over time to get a more
-resonable approximation of the TCP application bandwidth.
 
-After every n reads, the BW and the RTT are reported back to the main thread(
+BANDWIDTH/LATENCY MEASUREMENTS
+--------------------------------
+The TCP Client will continually send packets to server. Once the server
+echoes back the packet, the client with send the same packet over to the server.
+This process continues until the program is terminated. 
+
+By measuring the difference in timestamps between a packet and its echo,
+the TCP client is able to measure the round trip time . This calculation takes place
+in measureNeighborLatency() in tcpClientThread.cc. And by keeping track of total
+bytes received,the link bandwidth (BW) is calculated. It is averaged over time 
+to get a more resonable approximation of the application bandwidth. It is assumed
+the time between receving a echo packet and sending the next packet out is
+negligible compared to the link latency.
+
+After every n reads, the BW and the RTT are reported back to the main thread (
 i.e.commTestNode.cpp) via a registered callback, and the value are printed
 on the console.
 
-The code was developed on a macbook and the test was validted on a three 
+The code was developed on a macbook and the test was validated on a three 
 machine setup(one Macbook and two Ubuntu machines )
 
 
